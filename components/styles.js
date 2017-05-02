@@ -45,9 +45,6 @@ const styles = StyleSheet.create({
   weekRow: {
     flexDirection: 'row',
   },
-  weekendDayButton: {
-    backgroundColor: '#fafafa',
-  },
   dayButton: {
     alignItems: 'center',
     padding: 5,
