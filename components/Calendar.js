@@ -29,6 +29,7 @@ export default class Calendar extends Component {
     currentMonthMoment: moment(this.props.startDate),
     selectedMoment: moment(this.props.selectedDate),
     rowHeight: null,
+    events: [],
   };
 
   static propTypes = {
@@ -58,6 +59,12 @@ export default class Calendar extends Component {
     titleFormat: PropTypes.string,
     today: PropTypes.any,
     weekStart: PropTypes.number,
+    events: PropTypes.arrayOf(PropTypes.shape({
+      title: PropTypes.string,
+      date: PropTypes.any,
+    })),
+    timelineFirstHour: PropTypes.number,
+    timelineQuantityOfHours: PropTypes.number,
   };
 
   static defaultProps = {
@@ -76,25 +83,9 @@ export default class Calendar extends Component {
     titleFormat: 'MMMM YYYY',
     today: moment(),
     weekStart: 1,
+    timelineFirstHour: 8,
+    timelineQuantityOfHours: 10,
   };
-
-  componentDidMount() {
-    // fixes initial scrolling bug on Android
-    setTimeout(() => this.scrollToItem(VIEW_INDEX), 0)
-  }
-
-  componentDidUpdate() {
-    this.scrollToItem(VIEW_INDEX);
-  }
-
-  componentWillReceiveProps(nextProps) {
-    if (nextProps.selectedDate && this.props.selectedDate !== nextProps.selectedDate) {
-      this.setState({selectedMoment: nextProps.selectedDate});
-    }
-    if (nextProps.currentMonth) {
-      this.setState({currentMonthMoment: moment(nextProps.currentMonth)});
-    }
-  }
 
   getMonthStack(currentMonth) {
     if (this.props.scrollEnabled) {
@@ -303,6 +294,9 @@ export default class Calendar extends Component {
   }
 
   renderTimeline = () => {
+    const { events } = this.state;
+    const { timelineEventContainer, timelineEventTitle, timelineEventTime } = this.props.customStyle; // TODO: figure out default styles
+
     const times = [];
     // Hour starts on 08:00
     let hour = 7;
@@ -324,11 +318,134 @@ export default class Calendar extends Component {
     }
 
     return (
-      <View style={styles2.timelineContainer}>
+      <View style={styles2.timelineContainer} ref={ref => this.timeline = ref}>
         {times}
+
+        <View style={styles2.timelineEventsContainer}>
+          {events.map((event, key) => (
+            <View
+              key={key}
+              style={[
+                styles2.timelineEventContainer,
+                timelineEventContainer,
+                {
+                  marginTop: event.position.top,
+                  height: event.position.height,
+                },
+              ]}
+            >
+              <Text style={[styles2.timelineEventTitle, timelineEventTitle]}>{event.title}</Text>
+
+              <Text style={[styles2.timelineEventTime, timelineEventTime]}>
+                {`${event.startDate.format('HH:mm')} - ${event.endDate.format('HH:mm')}`}
+              </Text>
+            </View>
+          ))}
+        </View>
       </View>
     );
   };
+
+  componentDidMount() {
+    // Fixes initial scrolling bug on Android
+    // TODO: why the hell does it use a timeout with 0 secs?!
+    setTimeout(() => this.scrollToItem(VIEW_INDEX), 0);
+
+    console.log('timeline', this.timeline);
+    //
+    // this.timeline.measure( (fx, fy, width, height, px, py) => {
+    //   console.log('Component width is: ' + width)
+    //   console.log('Component height is: ' + height)
+    //   console.log('X offset to frame: ' + fx)
+    //   console.log('Y offset to frame: ' + fy)
+    //   console.log('X offset to page: ' + px)
+    //   console.log('Y offset to page: ' + py)
+    // });
+
+    // this.timeline.props.children.forEach(hourComponent => {
+    //   console.log('measure:', hourComponent)
+    //
+    //   console.log('meas', hourComponent.measure());
+    // });
+  }
+
+  parseEvents = (timelineHeight) => {
+    const { events, timelineFirstHour, timelineQuantityOfHours } = this.props;
+
+    return events.map(event => {
+      const startDate = moment(event.startDate);
+      const endDate = moment(event.endDate);
+
+      console.log('timelineHeight:', timelineHeight);
+      console.log('timelineQuantityOfHours', timelineQuantityOfHours);
+      console.log('endDate', endDate.hour());
+      console.log('endDate minutes', endDate.minutes(), endDate.minutes() / 60);
+      console.log('startDate', startDate.hour());
+      console.log('timelineFirstHour', timelineFirstHour)
+
+      // console.log('min:', (endDate.minutes() / 60));
+      console.log('height:', ((timelineHeight / timelineQuantityOfHours) * ((endDate.hour() - startDate.hour()) + (endDate.minutes() / 60))) - timelineFirstHour);
+// height: ((527 / 10) * ((10-9) + (30/60))) - 8
+      return {
+        startDate,
+        endDate,
+        title: event.title,
+        position: {
+          top: (timelineHeight / timelineQuantityOfHours) * ((startDate.hour() + (startDate.minutes() / 60)) - timelineFirstHour), // (height / quantityOfHours) * (eventHour - firstHour)
+          height: ((timelineHeight / timelineQuantityOfHours) * ((endDate.hour() - startDate.hour()) + (endDate.minutes() / 60))) - timelineFirstHour,
+        },
+      };
+    });
+  }
+
+  componentDidUpdate(prevState) {
+    this.scrollToItem(VIEW_INDEX);
+
+    if (prevState.events.length === this.state.events.length) {
+      return;
+    }
+
+    // TODO: figure out a better way to re-render all events
+
+    const { events, timelineFirstHour, timelineQuantityOfHours } = this.props;
+
+    const myEvents = [{
+      date: new Date(),
+      title: 'My awesome event',
+    }];
+
+    if (this.timeline) {
+      this.timeline.measure( (fx, fy, width, height, px, py) => {
+        console.log('Component width is: ' + width)
+        console.log('Component height is: ' + height)
+        console.log('X offset to frame: ' + fx)
+        console.log('Y offset to frame: ' + fy)
+        console.log('X offset to page: ' + px)
+        console.log('Y offset to page: ' + py)
+
+        this.setState(prevState => ({
+          events: [
+            ...prevState.events,
+            ...this.parseEvents(height),
+          ],
+        }));
+      });
+    }
+  }
+
+  componentWillReceiveProps(nextProps) {
+    if (nextProps.selectedDate && this.props.selectedDate !== nextProps.selectedDate) {
+      this.setState({
+        selectedMoment: nextProps.selectedDate,
+      });
+    }
+
+    if (nextProps.currentMonth) {
+      this.setState({
+        currentMonthMoment: moment(nextProps.currentMonth),
+      });
+    }
+  }
 
   render() {
     const { currentMonthMoment, rowHeight } = this.state;
@@ -383,6 +500,7 @@ export default class Calendar extends Component {
 
 const styles2 = StyleSheet.create({
   timelineContainer: {
+    position: 'relative',
     paddingVertical: 15,
     paddingLeft: 15,
     borderTopWidth: 1,
@@ -408,5 +526,21 @@ const styles2 = StyleSheet.create({
     borderTopColor: '#CCC',
     borderBottomWidth: 1,
     borderBottomColor: '#EEE',
+  },
+  timelineEventsContainer: {
+    position: 'absolute',
+    marginLeft: 70,
+  },
+  timelineEventContainer: {
+    position: 'absolute',
+    minWidth: 150,
+    minHeight: 75,
+  },
+  timelineEventTitle: {
+    color: 'white',
+    paddingBottom: 10,
+  },
+  timelineEventTime: {
+    color: 'white',
   },
 });
